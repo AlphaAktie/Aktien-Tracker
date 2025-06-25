@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Aktien-Tracker mit Passwortschutz</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #f0f3f7, #d9e2ec);
+      padding: 30px;
+      color: #333;
+      max-width: 900px;
+      margin: auto;
+      position: relative;
+    }
+    h1 {
+      text-align: center;
+      color: #004e89;
+      margin-bottom: 25px;
+    }
+    form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    input, button {
+      padding: 8px 12px;
+      font-size: 1rem;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      outline-offset: 2px;
+      outline-color: #007acc;
+    }
+    input[type="number"] {
+      width: 130px;
+    }
+    button {
+      background-color: #007acc;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #005fa3;
+    }
+    #stock-container {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 0 10px rgb(0 0 0 / 0.1);
+    }
+    .stock-entry {
+      border-bottom: 1px solid #ddd;
+      padding: 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+    .stock-entry:last-child {
+      border-bottom: none;
+    }
+    .stock-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.2rem;
+      flex: 0 0 120px;
+    }
+    .stock-header img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      border-radius: 4px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.15);
+    }
+    .stock-data {
+      flex: 1 1 auto;
+      font-size: 0.95rem;
+      color: #555;
+      line-height: 1.3;
+    }
+    .gewinn-verlust {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-top: 6px;
+    }
+    .gain {
+      color: #2a9d8f;
+    }
+    .loss {
+      color: #e63946;
+    }
+    .delete-btn {
+      margin-left: 12px;
+      background: transparent;
+      border: none;
+      font-size: 1.6rem;
+      color: #cc0000;
+      cursor: pointer;
+      transition: color 0.2s;
+      flex: 0 0 auto;
+      line-height: 1;
+      align-self: flex-start;
+      padding: 0 6px 2px 6px;
+    }
+    .delete-btn:hover {
+      color: #880000;
+    }
+
+    /* Passwort Input oben rechts */
+    #pw-container {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      background: #ffffffcc;
+      border-radius: 8px;
+      padding: 10px 15px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.15);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #pw-container input {
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      padding: 6px 8px;
+      width: 140px;
+    }
+    #pw-container button {
+      padding: 6px 12px;
+      font-size: 0.9rem;
+      background-color: #007acc;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background-color 0.3s;
+    }
+    #pw-container button:hover {
+      background-color: #005fa3;
+    }
+
+    /* Verstecken von Formular und Delete Buttons, solange kein Passwort */
+    .locked form,
+    .locked .delete-btn {
+      pointer-events: none;
+      opacity: 0.4;
+      user-select: none;
+    }
+    .locked .delete-btn {
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body class="locked">
+  <div id="pw-container">
+    <input type="password" id="pw-input" placeholder="Passwort eingeben" />
+    <button id="pw-button">Login</button>
+  </div>
+
+  <h1>Aktien-Tracker</h1>
+
+  <form id="aktienForm">
+    <input type="text" id="symbol" placeholder="Symbol (z. B. AAPL)" required />
+    <input type="number" step="0.01" id="investiert" placeholder="Investiert (€)" required />
+    <input type="number" step="0.0001" id="anteile" placeholder="Anteile (z.B. 0.25)" required />
+    <input type="number" step="0.01" id="manuellAktuell" placeholder="Aktueller Wert (€) (optional)" />
+    <button type="submit">Hinzufügen</button>
+  </form>
+
+  <div id="stock-container"></div>
+
+  <script>
+    const apiKey = "89HNZJH05D33A4GU";
+
+    const domainMap = {
+      AAPL: "apple.com",
+      MSFT: "microsoft.com",
+      GOOGL: "abc.xyz",
+      AMZN: "amazon.com",
+      TSLA: "tesla.com",
+      NFLX: "netflix.com",
+      FB: "fb.com",
+      NVDA: "nvidia.com",
+      JPM: "jpmorganchase.com",
+      DIS: "disney.com",
+    };
+
+    const form = document.getElementById("aktienForm");
+    const container = document.getElementById("stock-container");
+    const body = document.body;
+    const pwInput = document.getElementById("pw-input");
+    const pwButton = document.getElementById("pw-button");
+
+    const PASSWORT = "GG500"; // <-- Hier Passwort ändern
+
+    let aktien = JSON.parse(localStorage.getItem("meineAktien")) || [];
+
+    async function fetchKurs(symbol) {
+      try {
+        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data["Global Quote"] && data["Global Quote"]["05. price"]) {
+          return parseFloat(data["Global Quote"]["05. price"]);
+        }
+        return null;
+      } catch (e) {
+        console.error("Fehler Kurs holen:", e);
+        return null;
+      }
+    }
+
+    function getLogoURL(symbol) {
+      const domain = domainMap[symbol.toUpperCase()];
+      if (domain) {
+        return `https://logo.clearbit.com/${domain}`;
+      }
+      return "https://via.placeholder.com/32?text=?";
+    }
+
+    async function anzeigen() {
+      container.innerHTML = "";
+
+      for (let i = 0; i < aktien.length; i++) {
+        const e = aktien[i];
+        const kurs = await fetchKurs(e.symbol);
+
+        const aktuelleGesamt = e.manuellAktuell
+          ? e.manuellAktuell
+          : kurs
+          ? kurs * e.anteile
+          : null;
+
+        if (aktuelleGesamt === null) {
+          container.innerHTML += `<p style="color:#cc0000;">⚠️ Aktueller Kurs für ${e.symbol} nicht verfügbar.</p>`;
+          continue;
+        }
+
+        const gewinn = aktuelleGesamt - e.investiert;
+        const proz = (gewinn / e.investiert) * 100;
+
+        const div = document.createElement("div");
+        div.className = "stock-entry";
+
+        div.innerHTML = `
+          <div class="stock-header">
+            <img src="${getLogoURL(e.symbol)}" alt="${e.symbol} Logo" />
+            <div>${e.symbol}</div>
+          </div>
+
+          <div class="stock-data">
+            Investiert: €${e.investiert.toFixed(2)}<br />
+            Anteile: ${e.anteile}<br />
+            Aktueller Kurs: €${kurs ? kurs.toFixed(2) : "n/a"}<br />
+            Aktueller Wert: €${aktuelleGesamt.toFixed(2)}<br />
+            <div class="gewinn-verlust ${
+              gewinn >= 0 ? "gain" : "loss"
+            }">${gewinn >= 0 ? "Gewinn" : "Verlust"}: €${gewinn.toFixed(2)} (${proz.toFixed(
+          2
+        )}%)</div>
+          </div>
+
+          <button class="delete-btn" title="Löschen">×</button>
+        `;
+
+        container.appendChild(div);
+
+        // Delete nur aktiv wenn Passwort korrekt
+        const deleteBtn = div.querySelector(".delete-btn");
+        if (body.classList.contains("locked")) {
+          deleteBtn.style.display = "none";
+        } else {
+          deleteBtn.style.display = "inline";
+          deleteBtn.onclick = () => {
+            aktien.splice(i, 1);
+            localStorage.setItem("meineAktien", JSON.stringify(aktien));
+            anzeigen();
+          };
+        }
+      }
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (body.classList.contains("locked")) {
+        alert("Bitte zuerst mit Passwort anmelden!");
+        return;
+      }
+      const symbol = document.getElementById("symbol").value.trim().toUpperCase();
+      const investiert = parseFloat(document.getElementById("investiert").value);
+      const anteile = parseFloat(document.getElementById("anteile").value);
+      const manuellAktuellRaw = document.getElementById("manuellAktuell").value.trim();
+      const manuellAktuell = manuellAktuellRaw ? parseFloat(manuellAktuellRaw) : null;
+
+      aktien.push({ symbol, investiert, anteile, manuellAktuell });
+      localStorage.setItem("meineAktien", JSON.stringify(aktien));
+      form.reset();
+      await anzeigen();
+    });
+
+    pwButton.onclick = () => {
+      const eingabe = pwInput.value;
+      if (eingabe === PASSWORT) {
+        alert("Login erfolgreich!");
+        pwInput.value = "";
+        body.classList.remove("locked");
+        pwInput.disabled = true;
+        pwButton.disabled = true;
+        anzeigen();
+      } else {
+        alert("Falsches Passwort!");
+      }
+    };
+
+    // Seite lädt: Aktien anzeigen, aber gesperrt
+    anzeigen();
+  </script>
+</body>
+</html>
